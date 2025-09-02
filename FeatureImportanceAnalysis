@@ -1,0 +1,108 @@
+# Add this to your streamlit_app.py
+
+def show_feature_importance():
+    st.title("🔍 Feature Importance Analysis")
+    
+    # Load trained model (you'll need to have this available)
+    if 'training_results' not in st.session_state:
+        st.warning("⚠️ Please train models first in the Model Training section")
+        return
+    
+    results = st.session_state.training_results
+    
+    # Model selection for feature analysis
+    model_names = list(results.keys())
+    selected_model = st.selectbox("Select Model for Feature Analysis:", model_names)
+    
+    if selected_model and hasattr(results[selected_model]['model'], 'feature_importances_'):
+        model = results[selected_model]['model']
+        
+        # Get vectorizer (assuming it's stored in session state)
+        if 'vectorizer' in st.session_state:
+            vectorizer = st.session_state.vectorizer
+            feature_names = vectorizer.get_feature_names_out()
+            importances = model.feature_importances_
+            
+            # Top N features slider
+            top_n = st.slider("Number of top features to display:", 10, 50, 20)
+            
+            # Get top features
+            top_indices = np.argsort(importances)[-top_n:]
+            top_features = [feature_names[i] for i in top_indices]
+            top_importances = importances[top_indices]
+            
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                # Feature importance bar chart
+                fig = px.bar(
+                    x=top_importances,
+                    y=top_features,
+                    orientation='h',
+                    title=f"Top {top_n} Most Important Features - {selected_model}"
+                )
+                fig.update_layout(height=600)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                st.subheader("Feature Statistics")
+                
+                # Display top features with importance scores
+                feature_df = pd.DataFrame({
+                    'Feature': top_features,
+                    'Importance': top_importances
+                }).sort_values('Importance', ascending=False)
+                
+                st.dataframe(feature_df, use_container_width=True)
+                
+                # Summary statistics
+                st.metric("Max Importance", f"{importances.max():.4f}")
+                st.metric("Min Importance", f"{importances.min():.4f}")
+                st.metric("Mean Importance", f"{importances.mean():.4f}")
+            
+            # Feature importance distribution
+            st.subheader("Feature Importance Distribution")
+            
+            fig = px.histogram(
+                x=importances,
+                bins=50,
+                title="Distribution of Feature Importances"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Intent-specific feature analysis
+            st.subheader("Feature Analysis by Intent")
+            
+            # This would require more complex analysis of which features
+            # are most important for each intent classification
+            st.info("💡 Feature importance shows which words/phrases are most influential in the model's decision-making process.")
+        
+        else:
+            st.error("Vectorizer not found. Please retrain the model.")
+    
+    elif selected_model:
+        st.info(f"Feature importance analysis is not available for {selected_model}. This analysis works best with tree-based models like Random Forest.")
+    
+    # Feature correlation analysis
+    st.subheader("Feature Correlation Analysis")
+    
+    # Load sample data for correlation analysis
+    @st.cache_data
+    def load_sample_for_correlation():
+        processor = DataProcessor()
+        df = processor.generate_sample_data(500)
+        return processor.process_dataset(df)
+    
+    df = load_sample_for_correlation()
+    
+    # Text length vs other features
+    numeric_cols = ['text_length', 'word_count', 'sentiment_score', 'Customer_Satisfaction_Score', 'Resolution_Time_Hours']
+    correlation_matrix = df[numeric_cols].corr()
+    
+    fig = px.imshow(
+        correlation_matrix,
+        title="Feature Correlation Matrix",
+        color_continuous_scale='RdBu',
+        aspect='auto'
+    )
+    st.plotly_chart(fig, use_container_width=True)

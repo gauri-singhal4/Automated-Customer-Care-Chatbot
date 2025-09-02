@@ -1,0 +1,28 @@
+2025-08-31 22:08:42,971 - root - ERROR - Model file not found: c:\Users\HP\OneDrive\Desktop\Customer Care Chatbot\models\best_intent_classifier.pkl
+2025-08-31 22:08:42,972 - root - ERROR - Model file not found: c:\Users\HP\OneDrive\Desktop\Customer Care Chatbot\models\tfidf_vectorizer.pkl
+2025-08-31 22:08:42,972 - chatbot - WARNING - Failed to load models
+2025-08-31 22:08:42,974 - chatbot - ERROR - Error predicting intent: 
+**********************************************************************
+  Resource [93mpunkt_tab[0m not found.
+  Please use the NLTK Downloader to obtain the resource:
+
+  [31m>>> import nltk
+  >>> nltk.download('punkt_tab')
+  [0m
+  For more information see: https://www.nltk.org/data.html
+
+  Attempted to load [93mtokenizers/punkt_tab/english/[0m
+
+  Searched in:
+    - 'C:\\Users\\HP/nltk_data'
+    - 'D:\\pythonidle\\nltk_data'
+    - 'D:\\pythonidle\\share\\nltk_data'
+    - 'D:\\pythonidle\\lib\\nltk_data'
+    - 'C:\\Users\\HP\\AppData\\Roaming\\nltk_data'
+    - 'C:\\nltk_data'
+    - 'D:\\nltk_data'
+    - 'E:\\nltk_data'
+**********************************************************************
+
+2025-08-31 22:08:42,975 - chatbot - INFO - User input: Hello
+2025-08-31 22:08:42,975 - chatbot - INFO - Predicted intent: None, Confidence: 0.000

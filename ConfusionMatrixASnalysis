@@ -1,0 +1,135 @@
+# Add this function to your streamlit_app.py
+
+def show_confusion_matrix_analysis():
+    st.title("📊 Confusion Matrix Analysis")
+    
+    if 'training_results' not in st.session_state:
+        st.warning("⚠️ Please train models first in the Model Training section")
+        return
+    
+    results = st.session_state.training_results
+    
+    # Model selection
+    model_names = list(results.keys())
+    selected_model = st.selectbox("Select Model for Confusion Matrix Analysis:", model_names)
+    
+    if selected_model:
+        result = results[selected_model]
+        conf_matrix = result['confusion_matrix']
+        
+        # Get unique labels (assuming you have access to test labels)
+        # For this example, we'll use the intent categories
+        from config import INTENT_CATEGORIES
+        labels = INTENT_CATEGORIES
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            # Interactive confusion matrix
+            fig = px.imshow(
+                conf_matrix,
+                x=labels,
+                y=labels,
+                title=f"Confusion Matrix - {selected_model}",
+                labels=dict(x="Predicted Intent", y="Actual Intent"),
+                color_continuous_scale='Blues',
+                text_auto=True
+            )
+            fig.update_xaxes(tickangle=45)
+            fig.update_yaxes(tickangle=0)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            st.subheader("Matrix Statistics")
+            
+            # Calculate key metrics
+            total_predictions = conf_matrix.sum()
+            correct_predictions = np.diagonal(conf_matrix).sum()
+            accuracy = correct_predictions / total_predictions
+            
+            st.metric("Total Predictions", int(total_predictions))
+            st.metric("Correct Predictions", int(correct_predictions))
+            st.metric("Overall Accuracy", f"{accuracy:.3f}")
+            
+            # Per-class accuracy
+            st.subheader("Per-Class Accuracy")
+            per_class_accuracy = {}
+            for i, intent in enumerate(labels):
+                if i < len(conf_matrix):
+                    class_total = conf_matrix[i].sum()
+                    class_correct = conf_matrix[i][i] if class_total > 0 else 0
+                    class_acc = class_correct / class_total if class_total > 0 else 0
+                    per_class_accuracy[intent] = class_acc
+                    st.write(f"**{intent}**: {class_acc:.3f}")
+        
+        # Normalized confusion matrix
+        st.subheader("Normalized Confusion Matrix")
+        
+        # Normalize confusion matrix
+        conf_matrix_norm = conf_matrix.astype('float') / conf_matrix.sum(axis=1)[:, np.newaxis]
+        conf_matrix_norm = np.nan_to_num(conf_matrix_norm)  # Handle division by zero
+        
+        fig = px.imshow(
+            conf_matrix_norm,
+            x=labels,
+            y=labels,
+            title="Normalized Confusion Matrix (Row-wise)",
+            labels=dict(x="Predicted Intent", y="Actual Intent"),
+            color_continuous_scale='RdYlBu_r',
+            text_auto='.3f'
+        )
+        fig.update_xaxes(tickangle=45)
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Classification errors analysis
+        st.subheader("Classification Errors Analysis")
+        
+        # Find most confused pairs
+        confused_pairs = []
+        for i in range(len(labels)):
+            for j in range(len(labels)):
+                if i != j and conf_matrix[i][j] > 0:
+                    confused_pairs.append({
+                        'Actual': labels[i],
+                        'Predicted': labels[j],
+                        'Count': conf_matrix[i][j],
+                        'Percentage': conf_matrix[i][j] / conf_matrix[i].sum() * 100
+                    })
+        
+        if confused_pairs:
+            confused_df = pd.DataFrame(confused_pairs)
+            confused_df = confused_df.sort_values('Count', ascending=False).head(10)
+            
+            st.write("**Top 10 Most Common Misclassifications:**")
+            st.dataframe(confused_df, use_container_width=True)
+            
+            # Visualization of common errors
+            fig = px.bar(
+                confused_df.head(5),
+                x='Count',
+                y=[f"{row['Actual']} → {row['Predicted']}" for _, row in confused_df.head(5).iterrows()],
+                orientation='h',
+                title="Top 5 Most Common Classification Errors"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Model comparison (if multiple models trained)
+        if len(results) > 1:
+            st.subheader("Model Accuracy Comparison")
+            
+            comparison_data = []
+            for model_name, model_result in results.items():
+                comparison_data.append({
+                    'Model': model_name,
+                    'Accuracy': model_result['accuracy']
+                })
+            
+            comparison_df = pd.DataFrame(comparison_data)
+            
+            fig = px.bar(
+                comparison_df,
+                x='Model',
+                y='Accuracy',
+                title="Model Accuracy Comparison"
+            )
+            st.plotly_chart(fig, use_container_width=True)

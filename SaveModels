@@ -1,0 +1,257 @@
+# Add this to your streamlit_app.py as a new page or section
+
+def show_model_management():
+    st.title("💾 Model Management & Data Storage")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📤 Save Models")
+        
+        if 'training_results' in st.session_state and 'vectorizer' in st.session_state:
+            st.success("✅ Trained models available for saving")
+            
+            # Model saving options
+            save_format = st.radio("Select save format:", ["Pickle", "Joblib"])
+            include_metadata = st.checkbox("Include training metadata", value=True)
+            
+            if st.button("💾 Save All Models"):
+                with st.spinner("Saving models..."):
+                    try:
+                        # Create models directory
+                        models_dir = Path("models")
+                        models_dir.mkdir(exist_ok=True)
+                        
+                        # Save best model
+                        best_model_name = max(st.session_state.training_results.keys(), 
+                                            key=lambda k: st.session_state.training_results[k]['accuracy'])
+                        best_model = st.session_state.training_results[best_model_name]['model']
+                        
+                        if save_format == "Pickle":
+                            import pickle
+                            with open(models_dir / "best_model.pkl", 'wb') as f:
+                                pickle.dump(best_model, f)
+                            with open(models_dir / "vectorizer.pkl", 'wb') as f:
+                                pickle.dump(st.session_state.vectorizer, f)
+                        else:  # Joblib
+                            import joblib
+                            joblib.dump(best_model, models_dir / "best_model.joblib")
+                            joblib.dump(st.session_state.vectorizer, models_dir / "vectorizer.joblib")
+                        
+                        # Save metadata if requested
+                        if include_metadata:
+                            metadata = {
+                                'best_model': best_model_name,
+                                'training_date': datetime.now().isoformat(),
+                                'model_performance': {
+                                    name: {'accuracy': result['accuracy']}
+                                    for name, result in st.session_state.training_results.items()
+                                }
+                            }
+                            
+                            import json
+                            with open(models_dir / "model_metadata.json", 'w') as f:
+                                json.dump(metadata, f, indent=2)
+                        
+                        st.success(f"✅ Models saved successfully using {save_format}!")
+                        
+                        # Show saved files
+                        saved_files = list(models_dir.glob("*"))
+                        st.write("**Saved files:**")
+                        for file in saved_files:
+                            file_size = file.stat().st_size / 1024  # KB
+                            st.write(f"• {file.name} ({file_size:.1f} KB)")
+                        
+                    except Exception as e:
+                        st.error(f"❌ Error saving models: {str(e)}")
+            
+            # Individual model download
+            st.markdown("#### Download Individual Models")
+            
+            for model_name, result in st.session_state.training_results.items():
+                col_name, col_download = st.columns([2, 1])
+                
+                with col_name:
+                    st.write(f"**{model_name}**")
+                    st.write(f"Accuracy: {result['accuracy']:.4f}")
+                
+                with col_download:
+                    # Create downloadable model
+                    import pickle
+                    import io
+                    
+                    buffer = io.BytesIO()
+                    pickle.dump(result['model'], buffer)
+                    buffer.seek(0)
+                    
+                    st.download_button(
+                        label=f"Download {model_name}",
+                        data=buffer.getvalue(),
+                        file_name=f"{model_name.lower().replace(' ', '_')}.pkl",
+                        mime="application/octet-stream"
+                    )
+        
+        else:
+            st.warning("⚠️ No trained models available. Please train models first.")
+    
+    with col2:
+        st.subheader("📥 Load Models")
+        
+        # File upload for models
+        uploaded_model = st.file_uploader("Upload trained model", type=['pkl', 'joblib'])
+        uploaded_vectorizer = st.file_uploader("Upload vectorizer", type=['pkl', 'joblib'])
+        
+        if uploaded_model and uploaded_vectorizer:
+            if st.button("📂 Load Uploaded Models"):
+                try:
+                    import pickle
+                    
+                    # Load model
+                    model = pickle.load(uploaded_model)
+                    vectorizer = pickle.load(uploaded_vectorizer)
+                    
+                    # Update session state
+                    st.session_state.uploaded_model = model
+                    st.session_state.uploaded_vectorizer = vectorizer
+                    
+                    st.success("✅ Models loaded successfully!")
+                    
+                    # Test the loaded model
+                    st.write("**Testing loaded model:**")
+                    test_query = "I need to check my account balance"
+                    
+                    processed_query = st.session_state.chatbot.text_processor.preprocess_text(test_query)
+                    query_vector = vectorizer.transform([processed_query])
+                    prediction = model.predict(query_vector)[0]
+                    confidence = max(model.predict_proba(query_vector)[0])
+                    
+                    st.write(f"Test Query: '{test_query}'")
+                    st.write(f"Predicted Intent: {prediction}")
+                    st.write(f"Confidence: {confidence:.3f}")
+                    
+                except Exception as e:
+                    st.error(f"❌ Error loading models: {str(e)}")
+        
+        # Local model files
+        st.markdown("#### Load Local Models")
+        
+        models_dir = Path("models")
+        if models_dir.exists():
+            model_files = list(models_dir.glob("*.pkl")) + list(models_dir.glob("*.joblib"))
+            
+            if model_files:
+                selected_file = st.selectbox("Select model file:", model_files)
+                
+                if st.button("📂 Load Local Model"):
+                    try:
+                        if selected_file.suffix == '.pkl':
+                            import pickle
+                            with open(selected_file, 'rb') as f:
+                                loaded_item = pickle.load(f)
+                        else:
+                            import joblib
+                            loaded_item = joblib.load(selected_file)
+                        
+                        st.success(f"✅ Loaded {selected_file.name}")
+                        st.write(f"Type: {type(loaded_item)}")
+                        
+                    except Exception as e:
+                        st.error(f"❌ Error loading {selected_file.name}: {str(e)}")
+            else:
+                st.info("No model files found in models directory")
+        else:
+            st.info("Models directory not found")
+    
+    # Data management
+    st.markdown("---")
+    st.subheader("📊 Data Management")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### Export Training Data")
+        
+        if 'training_data' in st.session_state:
+            df = st.session_state.training_data
+            
+            # Export options
+            export_format = st.selectbox("Export format:", ["CSV", "JSON", "Excel"])
+            include_processed = st.checkbox("Include processed text", value=True)
+            
+            if st.button("📤 Export Data"):
+                try:
+                    if not include_processed and 'processed_text' in df.columns:
+                        export_df = df.drop('processed_text', axis=1)
+                    else:
+                        export_df = df.copy()
+                    
+                    if export_format == "CSV":
+                        csv_data = export_df.to_csv(index=False)
+                        st.download_button(
+                            "Download CSV",
+                            csv_data,
+                            file_name="training_data.csv",
+                            mime="text/csv"
+                        )
+                    elif export_format == "JSON":
+                        json_data = export_df.to_json(orient='records', indent=2)
+                        st.download_button(
+                            "Download JSON",
+                            json_data,
+                            file_name="training_data.json",
+                            mime="application/json"
+                        )
+                    else:  # Excel
+                        import io
+                        buffer = io.BytesIO()
+                        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                            export_df.to_excel(writer, index=False, sheet_name='Training Data')
+                        buffer.seek(0)
+                        
+                        st.download_button(
+                            "Download Excel",
+                            buffer.getvalue(),
+                            file_name="training_data.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                
+                except Exception as e:
+                    st.error(f"❌ Export error: {str(e)}")
+        
+        else:
+            st.info("No training data available to export")
+    
+    with col2:
+        st.markdown("#### Import Training Data")
+        
+        uploaded_data = st.file_uploader("Upload training data", type=['csv', 'json', 'xlsx'])
+        
+        if uploaded_data:
+            try:
+                if uploaded_data.name.endswith('.csv'):
+                    df = pd.read_csv(uploaded_data)
+                elif uploaded_data.name.endswith('.json'):
+                    df = pd.read_json(uploaded_data)
+                else:  # Excel
+                    df = pd.read_excel(uploaded_data)
+                
+                st.success(f"✅ Loaded {len(df)} records from {uploaded_data.name}")
+                
+                # Show preview
+                st.write("**Data Preview:**")
+                st.dataframe(df.head(), use_container_width=True)
+                
+                # Data validation
+                required_cols = ['Consumer_complaint_narrative', 'intent']
+                missing_cols = [col for col in required_cols if col not in df.columns]
+                
+                if missing_cols:
+                    st.warning(f"⚠️ Missing required columns: {missing_cols}")
+                else:
+                    if st.button("✅ Use This Data for Training"):
+                        st.session_state.training_data = df
+                        st.success("Training data updated!")
+                        st.rerun()
+                
+            except Exception as e:
+                st.error(f"❌ Error loading data: {str(e)}")

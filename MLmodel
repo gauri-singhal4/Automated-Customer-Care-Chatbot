@@ -1,0 +1,303 @@
+# Enhanced version of your model training for Streamlit integration
+# This can be added as a separate Python file: enhanced_model_trainer.py
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+class EnhancedModelTrainer:
+    """Enhanced model trainer with Streamlit integration"""
+    
+    def __init__(self):
+        self.models = {}
+        self.vectorizer = None
+        self.best_model = None
+        self.training_history = []
+    
+    def train_with_streamlit_ui(self, df):
+        """Train models with interactive Streamlit UI"""
+        
+        st.subheader("🧠 Advanced Model Training")
+        
+        # Model selection
+        st.markdown("#### Select Models to Train")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            nb_selected = st.checkbox("Naive Bayes", value=True)
+        with col2:
+            lr_selected = st.checkbox("Logistic Regression", value=True)
+        with col3:
+            rf_selected = st.checkbox("Random Forest", value=True)
+        with col4:
+            svm_selected = st.checkbox("SVM", value=False)
+        
+        # Training parameters
+        st.markdown("#### Training Parameters")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            test_size = st.slider("Test Size", 0.1, 0.4, 0.2, 0.05)
+        with col2:
+            max_features = st.slider("Max TF-IDF Features", 500, 5000, 1000, 500)
+        with col3:
+            cv_folds = st.slider("Cross-validation Folds", 3, 10, 5)
+        
+        # Advanced options
+        with st.expander("Advanced Options"):
+            ngram_min = st.slider("N-gram Min", 1, 3, 1)
+            ngram_max = st.slider("N-gram Max", 1, 3, 2)
+            min_df = st.slider("Min Document Frequency", 1, 10, 1)
+            max_df = st.slider("Max Document Frequency", 0.8, 1.0, 0.95, 0.05)
+        
+        if st.button("🚀 Start Training"):
+            # Prepare selected models
+            selected_models = {}
+            if nb_selected:
+                selected_models['Naive Bayes'] = MultinomialNB()
+            if lr_selected:
+                selected_models['Logistic Regression'] = LogisticRegression(random_state=42, max_iter=1000)
+            if rf_selected:
+                selected_models['Random Forest'] = RandomForestClassifier(random_state=42, n_estimators=100)
+            if svm_selected:
+                selected_models['SVM'] = SVC(random_state=42, probability=True)
+            
+            if not selected_models:
+                st.error("Please select at least one model to train!")
+                return
+            
+            # Training progress
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            # Prepare data
+            status_text.text("Preparing data...")
+            X = df['processed_text']
+            y = df['intent']
+            
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=test_size, random_state=42, stratify=y
+            )
+            
+            # Vectorize
+            self.vectorizer = TfidfVectorizer(
+                max_features=max_features,
+                ngram_range=(ngram_min, ngram_max),
+                min_df=min_df,
+                max_df=max_df
+            )
+            
+            X_train_tfidf = self.vectorizer.fit_transform(X_train)
+            X_test_tfidf = self.vectorizer.transform(X_test)
+            
+            progress_bar.progress(20)
+            
+            # Train models
+            results = {}
+            total_models = len(selected_models)
+            
+            for i, (name, model) in enumerate(selected_models.items()):
+                status_text.text(f"Training {name}...")
+                
+                # Train model
+                model.fit(X_train_tfidf, y_train)
+                
+                # Predictions
+                y_pred = model.predict(X_test_tfidf)
+                y_pred_proba = model.predict_proba(X_test_tfidf) if hasattr(model, 'predict_proba') else None
+                
+                # Cross-validation
+                cv_scores = cross_val_score(model, X_train_tfidf, y_train, cv=cv_folds)
+                
+                # Metrics
+                accuracy = accuracy_score(y_test, y_pred)
+                classification_rep = classification_report(y_test, y_pred, output_dict=True)
+                conf_matrix = confusion_matrix(y_test, y_pred)
+                
+                results[name] = {
+                    'model': model,
+                    'accuracy': accuracy,
+                    'cv_mean': cv_scores.mean(),
+                    'cv_std': cv_scores.std(),
+                    'predictions': y_pred,
+                    'predictions_proba': y_pred_proba,
+                    'classification_report': classification_rep,
+                    'confusion_matrix': conf_matrix
+                }
+                
+                progress_bar.progress(20 + int(70 * (i + 1) / total_models))
+            
+            progress_bar.progress(100)
+            status_text.text("Training completed!")
+            
+            # Find best model
+            best_model_name = max(results.keys(), key=lambda k: results[k]['accuracy'])
+            self.best_model = results[best_model_name]['model']
+            
+            # Display results
+            st.success(f"✅ Training completed! Best model: {best_model_name}")
+            
+            # Results summary
+            self.display_training_results(results, y_test)
+            
+            return results
+    
+    def display_training_results(self, results, y_test):
+        """Display comprehensive training results"""
+        
+        st.markdown("### 📊 Training Results")
+        
+        # Summary table
+        summary_data = []
+        for name, result in results.items():
+            summary_data.append({
+                'Model': name,
+                'Accuracy': f"{result['accuracy']:.4f}",
+                'CV Mean': f"{result['cv_mean']:.4f}",
+                'CV Std': f"±{result['cv_std']:.4f}"
+            })
+        
+        summary_df = pd.DataFrame(summary_data)
+        st.dataframe(summary_df, use_container_width=True)
+        
+        # Performance comparison charts
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Accuracy comparison
+            fig = px.bar(
+                summary_df, x='Model', y=[float(acc) for acc in summary_df['Accuracy']],
+                title="Model Accuracy Comparison"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            # CV scores comparison
+            cv_means = [result['cv_mean'] for result in results.values()]
+            cv_stds = [result['cv_std'] for result in results.values()]
+            
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                x=list(results.keys()),
+                y=cv_means,
+                error_y=dict(type='data', array=cv_stds),
+                name='CV Score'
+            ))
+            fig.update_layout(title="Cross-Validation Scores with Error Bars")
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Detailed analysis for best model
+        best_model_name = max(results.keys(), key=lambda k: results[k]['accuracy'])
+        best_result = results[best_model_name]
+        
+        st.markdown(f"### 🏆 Best Model Analysis: {best_model_name}")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Confusion matrix
+            conf_matrix = best_result['confusion_matrix']
+            labels = sorted(set(y_test))
+            
+            fig = px.imshow(
+                conf_matrix,
+                x=labels, y=labels,
+                title="Confusion Matrix",
+                color_continuous_scale='Blues',
+                text_auto=True
+            )
+            fig.update_xaxes(title="Predicted")
+            fig.update_yaxes(title="Actual")
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            # Classification report visualization
+            class_report = best_result['classification_report']
+            
+            # Extract metrics for visualization
+            metrics_data = []
+            for intent, metrics in class_report.items():
+                if intent not in ['accuracy', 'macro avg', 'weighted avg']:
+                    metrics_data.append({
+                        'Intent': intent,
+                        'Precision': metrics['precision'],
+                        'Recall': metrics['recall'],
+                        'F1-Score': metrics['f1-score']
+                    })
+            
+            metrics_df = pd.DataFrame(metrics_data)
+            metrics_melted = metrics_df.melt(id_vars=['Intent'], var_name='Metric', value_name='Score')
+            
+            fig = px.bar(
+                metrics_melted, x='Intent', y='Score', color='Metric',
+                title="Classification Metrics by Intent",
+                barmode='group'
+            )
+            fig.update_xaxes(tickangle=45)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Feature importance (for tree-based models)
+        if hasattr(best_result['model'], 'feature_importances_'):
+            st.markdown("#### 🔍 Feature Importance Analysis")
+            
+            feature_names = self.vectorizer.get_feature_names_out()
+            importances = best_result['model'].feature_importances_
+            
+            # Top 20 features
+            top_indices = np.argsort(importances)[-20:]
+            top_features = [feature_names[i] for i in top_indices]
+            top_importances = importances[top_indices]
+            
+            fig = px.bar(
+                x=top_importances,
+                y=top_features,
+                orientation='h',
+                title="Top 20 Most Important Features"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Model comparison radar chart
+        if len(results) > 1:
+            st.markdown("#### 📈 Model Comparison Radar Chart")
+            
+            # Prepare data for radar chart
+            metrics = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
+            
+            fig = go.Figure()
+            
+            for name, result in results.items():
+                class_avg = result['classification_report']['weighted avg']
+                values = [
+                    result['accuracy'],
+                    class_avg['precision'],
+                    class_avg['recall'],
+                    class_avg['f1-score']
+                ]
+                
+                fig.add_trace(go.Scatterpolar(
+                    r=values,
+                    theta=metrics,
+                    fill='toself',
+                    name=name
+                ))
+            
+            fig.update_layout(
+                polar=dict(
+                    radialaxis=dict(visible=True, range=[0, 1])
+                ),
+                title="Model Performance Comparison"
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)

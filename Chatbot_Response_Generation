@@ -1,0 +1,276 @@
+# Enhanced chatbot response system for Streamlit
+# Add this to your chatbot.py or create a separate file: enhanced_chatbot.py
+
+class EnhancedStreamlitChatbot(CustomerServiceChatbot):
+    """Enhanced chatbot with Streamlit-specific features"""
+    
+    def __init__(self):
+        super().__init__()
+        self.conversation_history = []
+        self.user_context = {}
+    
+    def chat_with_context(self, user_input, session_id=None):
+        """Enhanced chat with conversation context"""
+        
+        # Basic response
+        result = self.chat(user_input)
+        
+        # Add to conversation history
+        conversation_entry = {
+            'timestamp': datetime.now(),
+            'user_input': user_input,
+            'bot_response': result['response'],
+            'intent': result['intent'],
+            'confidence': result['confidence'],
+            'session_id': session_id
+        }
+        self.conversation_history.append(conversation_entry)
+        
+        # Enhanced response based on context
+        enhanced_response = self._enhance_response_with_context(result, user_input)
+        
+        return {
+            **result,
+            'enhanced_response': enhanced_response,
+            'conversation_id': len(self.conversation_history)
+        }
+    
+    def _enhance_response_with_context(self, result, user_input):
+        """Enhance response with contextual information"""
+        
+        base_response = result['response']
+        intent = result['intent']
+        confidence = result['confidence']
+        
+        # Add confidence-based enhancement
+        if confidence < 0.5:
+            base_response += "\n\n🤔 I'm not entirely sure about this. Would you like me to connect you with a human agent?"
+        elif confidence < 0.7:
+            base_response += "\n\n💡 Could you provide more details to help me assist you better?"
+        
+        # Add intent-specific enhancements
+        if intent == 'balance_inquiry':
+            base_response += "\n\n📱 You can also check your balance using our mobile app or by calling our 24/7 helpline."
+        elif intent == 'card_management':
+            base_response += "\n\n🔒 For your security, we'll need to verify your identity before making any changes to your card."
+        elif intent == 'loan_assistance':
+            base_response += "\n\n📋 I can help you with loan payments, balance inquiries, or connect you with our loan specialists."
+        elif intent == 'complaint_management':
+            base_response += "\n\n📝 Your complaint is important to us. I'll ensure it gets the attention it deserves."
+        elif intent == 'bill_payments':
+            base_response += "\n\n💳 We support multiple payment methods including online banking, mobile app, and automatic payments."
+        
+        return base_response
+    
+    def get_conversation_analytics(self):
+        """Get analytics from conversation history"""
+        
+        if not self.conversation_history:
+            return {}
+        
+        df = pd.DataFrame(self.conversation_history)
+        
+        analytics = {
+            'total_conversations': len(df),
+            'unique_sessions': df['session_id'].nunique() if 'session_id' in df else 1,
+            'avg_confidence': df['confidence'].mean(),
+            'intent_distribution': df['intent'].value_counts().to_dict(),
+            'low_confidence_rate': (df['confidence'] < 0.6).mean(),
+            'conversation_timeline': df.groupby(df['timestamp'].dt.hour).size().to_dict()
+        }
+        
+        return analytics
+    
+    def get_suggested_responses(self, intent):
+        """Get suggested follow-up questions for an intent"""
+        
+        suggestions = {
+            'balance_inquiry': [
+                "Would you like to see your recent transactions?",
+                "Do you need a mini statement?",
+                "Would you like to set up balance alerts?"
+            ],
+            'card_management': [
+                "Do you need a replacement card?",
+                "Would you like to update your card limits?",
+                "Should I help you with card activation?"
+            ],
+            'loan_assistance': [
+                "Would you like to know your EMI schedule?",
+                "Do you need help with prepayment calculation?",
+                "Should I explain loan restructuring options?"
+            ],
+            'complaint_management': [
+                "Would you like to track your complaint status?",
+                "Do you need to escalate this issue?",
+                "Should I schedule a callback from our team?"
+            ],
+            'bill_payments': [
+                "Would you like to set up automatic payments?",
+                "Do you need help with payment history?",
+                "Should I explain our payment options?"
+            ]
+        }
+        
+        return suggestions.get(intent, ["How else can I help you today?"])
+
+# Streamlit interface for enhanced chatbot
+def show_enhanced_chat_interface():
+    st.title("💬 Enhanced Customer Service Chat")
+    
+    # Initialize enhanced chatbot
+    if 'enhanced_chatbot' not in st.session_state:
+        st.session_state.enhanced_chatbot = EnhancedStreamlitChatbot()
+    
+    if 'session_id' not in st.session_state:
+        st.session_state.session_id = str(uuid.uuid4())[:8]
+    
+    chatbot = st.session_state.enhanced_chatbot
+    
+    # Sidebar with conversation analytics
+    with st.sidebar:
+        st.subheader("📊 Conversation Analytics")
+        
+        analytics = chatbot.get_conversation_analytics()
+        
+        if analytics:
+            st.metric("Total Messages", analytics.get('total_conversations', 0))
+            st.metric("Avg Confidence", f"{analytics.get('avg_confidence', 0):.2%}")
+            st.metric("Low Confidence Rate", f"{analytics.get('low_confidence_rate', 0):.2%}")
+            
+            # Intent distribution
+            if analytics.get('intent_distribution'):
+                intent_dist = analytics['intent_distribution']
+                fig = px.pie(
+                    values=list(intent_dist.values()),
+                    names=list(intent_dist.keys()),
+                    title="Intent Distribution"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+    
+    # Main chat interface
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        # Chat display
+        if 'enhanced_chat_history' not in st.session_state:
+            st.session_state.enhanced_chat_history = []
+        
+        # Display chat history
+        for entry in st.session_state.enhanced_chat_history:
+            # User message
+            st.markdown(f"""
+            <div style='background-color: #E3F2FD; padding: 10px; border-radius: 10px; margin: 5px 0; margin-left: 20%;'>
+                <strong>You:</strong> {entry['user_input']}
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Bot message with confidence
+            confidence_color = "green" if entry['confidence'] > 0.8 else "orange" if entry['confidence'] > 0.6 else "red"
+            st.markdown(f"""
+            <div style='background-color: #F5F5F5; padding: 10px; border-radius: 10px; margin: 5px 0; margin-right: 20%;'>
+                <strong>Bot:</strong> {entry['enhanced_response']}
+                <br><small style='color: {confidence_color};'>Confidence: {entry['confidence']:.1%} | Intent: {entry['intent']}</small>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Suggested follow-ups
+            if entry.get('suggestions'):
+                st.markdown("**Suggested follow-ups:**")
+                for suggestion in entry['suggestions']:
+                    if st.button(suggestion, key=f"suggest_{entry['conversation_id']}_{suggestion}"):
+                        # Process suggested question
+                        result = chatbot.chat_with_context(suggestion, st.session_state.session_id)
+                        suggestions = chatbot.get_suggested_responses(result['intent'])
+                        
+                        st.session_state.enhanced_chat_history.append({
+                            **result,
+                            'suggestions': suggestions[:3]
+                        })
+                        st.rerun()
+        
+        # Chat input
+        with st.form("enhanced_chat_form", clear_on_submit=True):
+            user_input = st.text_area("Your message:", height=100, 
+                                    placeholder="Type your message here... You can ask about balance, cards, loans, complaints, or bill payments.")
+            
+            col_submit, col_voice, col_clear = st.columns([2, 1, 1])
+            
+            with col_submit:
+                submit_button = st.form_submit_button("Send Message 📤")
+            with col_voice:
+                voice_button = st.form_submit_button("🎤 Voice Input")
+            with col_clear:
+                clear_button = st.form_submit_button("Clear Chat 🗑️")
+        
+        if submit_button and user_input:
+            with st.spinner("Processing your request..."):
+                result = chatbot.chat_with_context(user_input, st.session_state.session_id)
+                suggestions = chatbot.get_suggested_responses(result['intent'])
+                
+                st.session_state.enhanced_chat_history.append({
+                    **result,
+                    'suggestions': suggestions[:3]
+                })
+                st.rerun()
+        
+        if voice_button:
+            st.info("🎤 Voice input feature coming soon!")
+        
+        if clear_button:
+            st.session_state.enhanced_chat_history = []
+            chatbot.conversation_history = []
+            st.rerun()
+    
+    with col2:
+        st.subheader("🚀 Quick Actions")
+        
+        quick_actions = {
+            "💰 Check Balance": "I need to check my account balance",
+            "🔒 Block Card": "I need to block my card immediately",
+            "🏠 Loan Help": "I need help with my loan payment",
+            "📋 File Complaint": "I want to file a complaint",
+            "💸 Pay Bills": "I need help with bill payment"
+        }
+        
+        for action_name, action_text in quick_actions.items():
+            if st.button(action_name, use_container_width=True):
+                result = chatbot.chat_with_context(action_text, st.session_state.session_id)
+                suggestions = chatbot.get_suggested_responses(result['intent'])
+                
+                st.session_state.enhanced_chat_history.append({
+                    **result,
+                    'suggestions': suggestions[:3]
+                })
+                st.rerun()
+        
+        st.markdown("---")
+        
+        # Conversation export
+        st.subheader("📥 Export Conversation")
+        
+        if st.session_state.enhanced_chat_history:
+            # Prepare export data
+            export_data = []
+            for entry in st.session_state.enhanced_chat_history:
+                export_data.append({
+                    'Timestamp': entry.get('timestamp', datetime.now()),
+                    'User Input': entry['user_input'],
+                    'Bot Response': entry['enhanced_response'],
+                    'Intent': entry['intent'],
+                    'Confidence': entry['confidence']
+                })
+            
+            export_df = pd.DataFrame(export_data)
+            
+            # Download button
+            csv = export_df.to_csv(index=False)
+            st.download_button(
+                label="Download Chat History",
+                data=csv,
+                file_name=f"chat_history_{st.session_state.session_id}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("No conversation history to export")
+

@@ -1,0 +1,311 @@
+# Add this comprehensive evaluation page to your streamlit_app.py
+
+def show_model_evaluation_summary():
+    st.title("📈 Comprehensive Model Evaluation")
+    
+    if 'training_results' not in st.session_state:
+        st.warning("⚠️ No training results available. Please train models first.")
+        return
+    
+    results = st.session_state.training_results
+    
+    # Overview metrics
+    st.subheader("🎯 Model Performance Overview")
+    
+    # Create summary dataframe
+    summary_data = []
+    for name, result in results.items():
+        class_report = result['classification_report']
+        summary_data.append({
+            'Model': name,
+            'Accuracy': result['accuracy'],
+            'Precision': class_report['weighted avg']['precision'],
+            'Recall': class_report['weighted avg']['recall'],
+            'F1-Score': class_report['weighted avg']['f1-score'],
+            'CV Mean': result.get('cv_mean', 0),
+            'CV Std': result.get('cv_std', 0)
+        })
+    
+    summary_df = pd.DataFrame(summary_data)
+    
+    # Display metrics
+    col1, col2, col3, col4 = st.columns(4)
+    
+    best_model = summary_df.loc[summary_df['Accuracy'].idxmax()]
+    
+    with col1:
+        st.metric("Best Model", best_model['Model'])
+    with col2:
+        st.metric("Best Accuracy", f"{best_model['Accuracy']:.3f}")
+    with col3:
+        st.metric("Best F1-Score", f"{best_model['F1-Score']:.3f}")
+    with col4:
+        st.metric("Models Trained", len(results))
+    
+    # Detailed comparison table
+    st.subheader("📊 Detailed Model Comparison")
+    
+    # Format the summary table for better display
+    display_df = summary_df.copy()
+    for col in ['Accuracy', 'Precision', 'Recall', 'F1-Score', 'CV Mean']:
+        display_df[col] = display_df[col].apply(lambda x: f"{x:.4f}")
+    display_df['CV Std'] = display_df['CV Std'].apply(lambda x: f"±{x:.4f}")
+    
+    st.dataframe(display_df, use_container_width=True)
+    
+    # Performance visualizations
+    st.subheader("📈 Performance Visualizations")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Multi-metric comparison
+        metrics_to_plot = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
+        
+        fig = go.Figure()
+        for metric in metrics_to_plot:
+            fig.add_trace(go.Bar(
+                name=metric,
+                x=summary_df['Model'],
+                y=summary_df[metric],
+                text=summary_df[metric].apply(lambda x: f'{x:.3f}'),
+                textposition='outside'
+            ))
+        
+        fig.update_layout(
+            title="Model Performance Comparison",
+            barmode='group',
+            yaxis_title="Score",
+            xaxis_title="Model"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        # Cross-validation performance
+        if any(result.get('cv_mean', 0) > 0 for result in results.values()):
+            cv_data = []
+            for name, result in results.items():
+                if result.get('cv_mean', 0) > 0:
+                    cv_data.append({
+                        'Model': name,
+                        'CV Mean': result['cv_mean'],
+                        'CV Std': result['cv_std']
+                    })
+            
+            if cv_data:
+                cv_df = pd.DataFrame(cv_data)
+                
+                fig = go.Figure()
+                fig.add_trace(go.Bar(
+                    x=cv_df['Model'],
+                    y=cv_df['CV Mean'],
+                    error_y=dict(
+                        type='data',
+                        array=cv_df['CV Std'],
+                        visible=True
+                    ),
+                    name='CV Score'
+                ))
+                
+                fig.update_layout(
+                    title="Cross-Validation Performance",
+                    yaxis_title="CV Score",
+                    xaxis_title="Model"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+    
+    # Per-class performance analysis
+    st.subheader("🎯 Per-Class Performance Analysis")
+    
+    best_model_name = summary_df.loc[summary_df['Accuracy'].idxmax(), 'Model']
+    best_result = results[best_model_name]
+    
+    # Extract per-class metrics
+    class_metrics = []
+    for intent, metrics in best_result['classification_report'].items():
+        if intent not in ['accuracy', 'macro avg', 'weighted avg']:
+            class_metrics.append({
+                'Intent': intent.replace('_', ' ').title(),
+                'Precision': metrics['precision'],
+                'Recall': metrics['recall'],
+                'F1-Score': metrics['f1-score'],
+                'Support': metrics['support']
+            })
+    
+    class_df = pd.DataFrame(class_metrics)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write(f"**{best_model_name} - Per-Class Metrics:**")
+        st.dataframe(class_df, use_container_width=True)
+    
+    with col2:
+        # Radar chart for per-class performance
+        fig = go.Figure()
+        
+        for metric in ['Precision', 'Recall', 'F1-Score']:
+            fig.add_trace(go.Scatterpolar(
+                r=class_df[metric],
+                theta=class_df['Intent'],
+                fill='toself',
+                name=metric
+            ))
+        
+        fig.update_layout(
+            polar=dict(
+                radialaxis=dict(
+                    visible=True,
+                    range=[0, 1]
+                )),
+            showlegend=True,
+            title=f"Per-Class Performance Radar - {best_model_name}"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Model complexity vs performance
+    st.subheader("⚖️ Model Complexity Analysis")
+    
+    # This would need actual model complexity metrics
+    # For now, we'll simulate based on model type
+    complexity_map = {
+        'Naive Bayes': 1,
+        'Logistic Regression': 2,
+        'Random Forest': 4,
+        'SVM': 3
+    }
+    
+    complexity_data = []
+    for name, result in results.items():
+        complexity_data.append({
+            'Model': name,
+            'Accuracy': result['accuracy'],
+            'Complexity': complexity_map.get(name, 2),
+            'Size': 'Small' if complexity_map.get(name, 2) <= 2 else 'Large'
+        })
+    
+    complexity_df = pd.DataFrame(complexity_data)
+    
+    fig = px.scatter(
+        complexity_df,
+        x='Complexity',
+        y='Accuracy',
+        size=[10]*len(complexity_df),  # Fixed size for all points
+        color='Model',
+        title="Model Complexity vs Accuracy Trade-off",
+        labels={'Complexity': 'Model Complexity (1-5 scale)', 'Accuracy': 'Accuracy Score'}
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Error analysis
+    st.subheader("🔍 Error Analysis")
+    
+    # Most confused intents
+    conf_matrix = best_result['confusion_matrix']
+    intent_labels = [intent.replace('_', ' ').title() for intent in INTENT_CATEGORIES]
+    
+    # Find top misclassifications
+    errors = []
+    for i in range(len(intent_labels)):
+        for j in range(len(intent_labels)):
+            if i != j and conf_matrix[i][j] > 0:
+                errors.append({
+                    'Actual': intent_labels[i],
+                    'Predicted': intent_labels[j],
+                    'Count': conf_matrix[i][j],
+                    'Error_Type': f"{intent_labels[i]} → {intent_labels[j]}"
+                })
+    
+    if errors:
+        errors_df = pd.DataFrame(errors).sort_values('Count', ascending=False).head(10)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**Top 10 Classification Errors:**")
+            st.dataframe(errors_df[['Error_Type', 'Count']], use_container_width=True)
+        
+        with col2:
+            fig = px.bar(
+                errors_df.head(5),
+                x='Count',
+                y='Error_Type',
+                orientation='h',
+                title="Most Common Misclassifications"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+    
+    # Performance trends (if multiple training sessions)
+    st.subheader("📊 Training History & Trends")
+    
+    # Simulate training history for demonstration
+    # In a real application, you'd store this data across sessions
+    if 'training_history' not in st.session_state:
+        st.session_state.training_history = []
+    
+    # Add current results to history
+    current_session = {
+        'timestamp': datetime.now(),
+        'models': {name: result['accuracy'] for name, result in results.items()}
+    }
+    
+    # Check if this session is already recorded
+    if not any(session.get('timestamp').date() == current_session['timestamp'].date() 
+              for session in st.session_state.training_history):
+        st.session_state.training_history.append(current_session)
+    
+    if len(st.session_state.training_history) > 1:
+        # Create trend visualization
+        trend_data = []
+        for session in st.session_state.training_history:
+            for model, accuracy in session['models'].items():
+                trend_data.append({
+                    'Date': session['timestamp'].strftime('%Y-%m-%d'),
+                    'Model': model,
+                    'Accuracy': accuracy
+                })
+        
+        trend_df = pd.DataFrame(trend_data)
+        
+        fig = px.line(
+            trend_df,
+            x='Date',
+            y='Accuracy',
+            color='Model',
+            title="Model Performance Over Time"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Train models multiple times to see performance trends over time.")
+    
+    # Export evaluation report
+    st.subheader("📥 Export Evaluation Report")
+    
+    if st.button("📋 Generate Comprehensive Report"):
+        report_data = {
+            'evaluation_date': datetime.now().isoformat(),
+            'model_summary': summary_df.to_dict('records'),
+            'best_model': best_model_name,
+            'best_model_metrics': best_result['classification_report'],
+            'confusion_matrix': conf_matrix.tolist(),
+            'top_errors': errors_df.to_dict('records') if errors else []
+        }
+        
+        import json
+        report_json = json.dumps(report_data, indent=2, default=str)
+        
+        st.download_button(
+            label="Download Evaluation Report (JSON)",
+            data=report_json,
+            file_name=f"model_evaluation_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            mime="application/json"
+        )
+        
+        # Also create CSV summary
+        csv_data = summary_df.to_csv(index=False)
+        st.download_button(
+            label="Download Summary (CSV)",
+            data=csv_data,
+            file_name=f"model_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
